@@ -16,7 +16,6 @@
 #define START_BONUS 50
 #define BOOKMAKER_WIN_FREQUENCY 3
 
-
 class WorldCup2022 : public WorldCup {
 private:
     class Player {
@@ -34,7 +33,7 @@ private:
             return name;
         }
 
-        void movePlayer(unsigned int fields, unsigned int boardSize) {
+        void move(unsigned int fields, unsigned int boardSize) {
             position = (position + fields) % boardSize;
         }
 
@@ -99,7 +98,8 @@ private:
     private:
         const unsigned int bonus;
     public:
-        explicit Goal(const std::string &name, unsigned int bonus) : Field(name), bonus(bonus) {}
+        explicit Goal(const std::string &name, unsigned int bonus) : 
+                      Field(name), bonus(bonus) {}
 
         void onPlayerStop(Player &player) override {
             player.addMoney(bonus);
@@ -110,7 +110,8 @@ private:
     private:
         const int savePrice;
     public:
-        explicit Penalty(const std::string &name, const int savePrice) : Field(name), savePrice(savePrice) {}
+        explicit Penalty(const std::string &name, const int savePrice) : 
+                         Field(name), savePrice(savePrice) {}
 
         void onPlayerStop(Player &player) override {
             player.substractMoney(savePrice);
@@ -122,7 +123,8 @@ private:
         const int betSize;
         int playersCount = 0;
     public:
-        explicit Bookmaker(const std::string &name, const int betSize) : Field(name), betSize(betSize) {}
+        explicit Bookmaker(const std::string &name, const int betSize) : 
+                           Field(name), betSize(betSize) {}
 
         void onPlayerStop(Player &player) override {
             if (playersCount == 0) {
@@ -138,21 +140,20 @@ private:
     private:
         const int suspensionSize;
     public:
-        explicit YellowCard(const std::string &name, const int suspensionSize) : Field(name),
-                                                                                 suspensionSize(suspensionSize) {}
+        explicit YellowCard(const std::string &name, const int suspensionSize) : 
+                            Field(name), suspensionSize(suspensionSize) {}
 
         void onPlayerStop(Player &player) override {
             player.suspension += suspensionSize - 1;
         }
     };
 
-
-
     class Match : public Field {
     public:
         enum matchType {friendly, forPoints, final};
 
-        Match(const std::string &name, matchType type, unsigned int fee) : Field(name), fee(fee) {
+        Match(const std::string &name, matchType type, unsigned int fee) : 
+              Field(name), fee(fee) {
             switch (type) {
                 case friendly:
                     matchRate = 1;
@@ -218,6 +219,7 @@ private:
     class Dies {
     private:
         std::vector<std::shared_ptr<Die>> dies;
+
     public:
         Dies() = default;
 
@@ -240,10 +242,8 @@ private:
 
     class DefaultScoreboard : public ScoreBoard {
     public:
-        
         virtual void onRound([[maybe_unused]] unsigned int roundNo) {}
 
-        
         virtual void onTurn([[maybe_unused]] std::string const &playerName, 
                             [[maybe_unused]] std::string const &playerStatus,
                             [[maybe_unused]] std::string const &squareName, 
@@ -280,6 +280,37 @@ private:
         }
     }
 
+    std::string movePlayer(Player *player, unsigned int fields) {
+        unsigned int position = player->getPosition();
+        for (unsigned int i = 1; i < fields; i++) {
+            board.getField((position + i) % board.size())->onPlayerPass(*player);
+        }
+        player->move(fields, board.size());
+        board.getField(player->getPosition())->onPlayerStop(*player);
+        if (player->bankrupt()) {
+            return "*** bankrut ***";                       
+        }
+        if (player->suspension > 0) {
+            return "*** czekanie: " + std::to_string(player->suspension + 1) + " ***";
+        }
+        return "w grze";
+    }
+
+    std::string findWinner() {
+        if (players.size() == 1) {
+            return players.front().getName();
+        } 
+        unsigned int max_money = 0;
+        std::string winnerName;
+        for (Player p : players) {
+            if (p.getMoney() > max_money) {
+                max_money = p.getMoney();
+                winnerName = p.getName();
+            }
+        }
+        return winnerName;
+    }
+
 public:
     WorldCup2022() {
         this->board = Board({
@@ -298,96 +329,49 @@ public:
         });
     }
 
-    // Jeżeli argumentem jest pusty wskaźnik, to nie wykonuje żadnej operacji
-    // (ale nie ma błędu).
     void addDie(std::shared_ptr<Die> die) override {
         if (die != nullptr) dies.addDie(die);
     }
 
-    // Dodaje nowego gracza o podanej nazwie.
     void addPlayer(std::string const &name) override {
         players.emplace_back(name);
     }
 
-    // Konfiguruje tablicę wyników. Domyślnie jest skonfigurowana tablica
-    // wyników, która nic nie robi.
     void setScoreBoard(std::shared_ptr<ScoreBoard> sb) override {
         this->scoreboard = sb;
     }
 
-    // Przeprowadza rozgrywkę co najwyżej podanej liczby rund (rozgrywka może
-    // skończyć się wcześniej).
-    // Jedna runda obejmuje po jednym ruchu każdego gracza.
-    // Gracze ruszają się w kolejności, w której zostali dodani.
-    // Na początku każdej rundy przekazywana jest informacja do tablicy wyników
-    // o początku rundy (onRound), a na zakończenie tury gracza informacje
-    // podsumowujące dla każdego gracza (onTurn). 
-    // Rzuca TooManyDiceException, jeśli jest zbyt dużo kostek.
-    // Rzuca TooFewDiceException, jeśli nie ma wystarczającej liczby kostek.
-    // Rzuca TooManyPlayersException, jeśli jest zbyt dużo graczy.
-    // Rzuca TooFewPlayersException, jeśli liczba graczy nie pozwala na
-    // rozpoczęcie gry.
-    // Wyjątki powinny dziedziczyć po std::exception.
     void play(unsigned int rounds) override {
-        
         checkDies();
         checkPlayers();
-
-        std::string winnerName; // pewnie można to zrobić ładniej
-
-
-        for (unsigned int round = 0; round < rounds; round++) {
-            if (players.size() == 1) {
-                winnerName = players.front().getName();
-                break;
-            }
+        for (unsigned int round = 0; round < rounds && players.size() > 1; round++) {
             scoreboard->onRound(round);
             std::string status;
-            for (auto playerIt = players.begin(); playerIt != players.end(); playerIt++) {
-                bool bancrupted = false;
+            for (auto playerIt = players.begin(); playerIt != players.end();) {
                 if (playerIt->suspension > 0) {
                     status = "*** czekanie: " + std::to_string(playerIt->suspension) + " ***";
                     playerIt->suspension--;
                 } else {
-                    unsigned int diesResult = dies.roll();
-                    unsigned int position = playerIt->getPosition();
-                    for (unsigned int i = 1; i < diesResult; i++) {
-                        board.getField((position + i) % board.size())->onPlayerPass(*playerIt);
-                    }
-                    playerIt->movePlayer(diesResult, board.size());
-                    board.getField(playerIt->getPosition())->onPlayerStop(*playerIt);
-                    status = "w grze";
-                    bancrupted = playerIt->bankrupt();
-                    if (bancrupted) {
-                        status = "*** bankrut ***";
-                        scoreboard->onTurn(playerIt->getName(), status, board.getField(playerIt->getPosition())->getName(),
-                            playerIt->getMoney());
-                        players.erase(playerIt--);
-                    }
-                    if (playerIt->suspension > 0) {
-                        status = "*** czekanie: " + std::to_string(playerIt->suspension + 1) + " ***";
-                    }
+                    status = movePlayer(&(*playerIt), dies.roll());
+                    // do debugowania żeby nie wpisywać za każdym razem jak nie będzie działać
+                    // std::cout << round << playerIt->getName() << " " << board.getField(playerIt->getPosition())->getName() << std::endl;
                 }
-
-                if (!bancrupted) {
-                    scoreboard->onTurn(playerIt->getName(), status, board.getField(playerIt->getPosition())->getName(),
+                scoreboard->onTurn(playerIt->getName(), status, 
+                        board.getField(playerIt->getPosition())->getName(),
                         playerIt->getMoney());
+
+                if (playerIt->bankrupt()) {
+                    players.erase(playerIt++);
+                } else {
+                    playerIt++;
                 }
+
+                // czemu to nie działa skoro to chyba to samo co ten if i else powyżej xD
+                // if (playerIt->bankrupt()) players.erase(playerIt);   
+                // playerIt++;             
             }
         }
-
-        if (winnerName.empty()) {
-            unsigned int max_money = 0;
-            for (Player p : players) {
-                if (p.getMoney() > max_money) {
-                    max_money = p.getMoney();
-                    winnerName = p.getName();
-                }
-            }
-        }
-
-        scoreboard->onWin(winnerName);
-
+        scoreboard->onWin(findWinner());
     };
 
 };
