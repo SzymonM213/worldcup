@@ -399,7 +399,6 @@ public:
         }
         scoreboard->onWin(findWinner());
     };
-
 };
 
 #endif
