@@ -78,8 +78,8 @@ private:
             return name;
         }
 
-        virtual void onPlayerStop(Player &player) {}
-        virtual void onPlayerPass(Player &player) {}
+        virtual void onPlayerStop([[maybe_unused]] Player &player) {}
+        virtual void onPlayerPass([[maybe_unused]] Player &player) {}
     };
 
     class SeasonBeginning : public Field {
@@ -156,10 +156,13 @@ private:
             switch (type) {
                 case friendly:
                     matchRate = 1;
+                    break;
                 case forPoints:
                     matchRate = 2.5;
+                    break;
                 case final:
                     matchRate = 4;
+                    break;
             }
         }
 
@@ -263,8 +266,7 @@ public:
     // Gracze ruszają się w kolejności, w której zostali dodani.
     // Na początku każdej rundy przekazywana jest informacja do tablicy wyników
     // o początku rundy (onRound), a na zakończenie tury gracza informacje
-    // podsumowujące dla każdego gracza (onTurn). TODO: ej a to nie znaczy że dla każdego gracza także tego zbankrutowanego? ale nie chyba nie
-    // TODO: tylko wtedy kiedy bankrutuje to trzeba go wypisać
+    // podsumowujące dla każdego gracza (onTurn). 
     // Rzuca TooManyDiceException, jeśli jest zbyt dużo kostek.
     // Rzuca TooFewDiceException, jeśli nie ma wystarczającej liczby kostek.
     // Rzuca TooManyPlayersException, jeśli jest zbyt dużo graczy.
@@ -288,7 +290,7 @@ public:
         std::string winnerName; // pewnie można to zrobić ładniej
 
 
-        for (int round = 0; round < rounds; round++) {
+        for (unsigned int round = 0; round < rounds; round++) {
             if (players.size() == 1) {
                 winnerName = players.front().getName();
                 break;
@@ -303,7 +305,7 @@ public:
                 } else {
                     unsigned int diesResult = dies[0]->roll() + dies[1]->roll();
                     unsigned int position = playerIt->getPosition();
-                    for (int i = 1; i < diesResult; i++) {
+                    for (unsigned int i = 1; i < diesResult; i++) {
                         board.getField((position + i) % board.size())->onPlayerPass(*playerIt);
                     }
                     playerIt->movePlayer(diesResult, board.size());
@@ -311,17 +313,19 @@ public:
                     status = "w grze";
                     bancrupted = playerIt->bankrupt();
                     if (bancrupted) {
-                        std::cout << "AAAAAA" << std::endl;
-                        players.erase(playerIt);
                         status = "*** bankrut ***";
+                        scoreboard->onTurn(playerIt->getName(), status, board.getField(playerIt->getPosition())->getName(),
+                            playerIt->getMoney());
+                        players.erase(playerIt--);
+                    }
+                    if (playerIt->suspension > 0) {
+                        status = "*** czekanie: " + std::to_string(playerIt->suspension + 1) + " ***";
                     }
                 }
-                scoreboard->onTurn(playerIt->getName(), status, board.getField(playerIt->getPosition())->getName(),
-                                   playerIt->getMoney());
-                std::cout << "SS\n";
-                if (bancrupted) {
-                    playerIt--; // to robi coś złego
-                    std::cout << "Y\n";
+
+                if (!bancrupted) {
+                    scoreboard->onTurn(playerIt->getName(), status, board.getField(playerIt->getPosition())->getName(),
+                        playerIt->getMoney());
                 }
             }
         }
