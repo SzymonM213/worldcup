@@ -361,6 +361,7 @@ public:
                         playerIt->getMoney());
 
                 if (playerIt->bankrupt()) {
+                    if (players.size() == 1) break; 
                     players.erase(playerIt++);
                 } else {
                     playerIt++;
