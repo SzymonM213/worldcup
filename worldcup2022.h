@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 #include <list>
 #include <iostream>
@@ -27,7 +28,7 @@ private:
     public:
         int suspension = 0;
 
-        explicit Player(std::string const &name) : name(name) {}
+        explicit Player(std::string name) : name(std::move(name)) {}
 
         std::string getName() {
             return name;
@@ -52,16 +53,20 @@ private:
             }
         }
 
-        unsigned int getMoney() {
+        [[nodiscard]] unsigned int getMoney() const {
             return zdzislaws;
         }
 
-        unsigned int getPosition() {
+        [[nodiscard]] unsigned int getPosition() const {
             return this->position;
         }
 
-        bool bankrupt() {
+        [[nodiscard]] bool bankrupt() const {
             return isBankrupt;
+        }
+
+        void putToStart() {
+            this->position = 0;
         }
     };
 
@@ -69,7 +74,7 @@ private:
     private:
         std::string name;
     public:
-        explicit Field(std::string const &name) : name(name) {}
+        explicit Field(std::string name) : name(std::move(name)) {}
 
         virtual ~Field() = default;
 
@@ -79,6 +84,7 @@ private:
 
         virtual void onPlayerStop([[maybe_unused]] Player &player) {}
         virtual void onPlayerPass([[maybe_unused]] Player &player) {}
+        virtual void reset() {}
     };
 
     class SeasonBeginning : public Field {
@@ -134,6 +140,10 @@ private:
             }
             playersCount = (playersCount + 1) % BOOKMAKER_WIN_FREQUENCY;
         }
+
+        void reset() override {
+            playersCount = 0;
+        }
     };
 
     class YellowCard : public Field {
@@ -172,11 +182,14 @@ private:
             playersPassed = 0;
         }
 
-        //TODO: czy usuwać pieniądze przy bankrutowaniu
         void onPlayerPass(Player &player) override {
             if (player.substractMoney(fee)) {
                 playersPassed++;
             }
+        }
+
+        void reset() override {
+            playersPassed = 0;
         }
 
     private:
@@ -214,6 +227,12 @@ private:
             assert(position < fields.size());
             return fields[position];
         }
+
+        void resetBoard() {
+            for (std::shared_ptr<Field> f : fields) {
+                f.reset();
+            }
+        }
     };
 
     class Dies {
@@ -242,14 +261,14 @@ private:
 
     class DefaultScoreboard : public ScoreBoard {
     public:
-        virtual void onRound([[maybe_unused]] unsigned int roundNo) {}
+        void onRound([[maybe_unused]] unsigned int roundNo) override {}
 
-        virtual void onTurn([[maybe_unused]] std::string const &playerName, 
+        void onTurn([[maybe_unused]] std::string const &playerName,
                             [[maybe_unused]] std::string const &playerStatus,
                             [[maybe_unused]] std::string const &squareName, 
-                            [[maybe_unused]] unsigned int money) {}
+                            [[maybe_unused]] unsigned int money) override {}
 
-        virtual void onWin([[maybe_unused]] std::string const &playerName) {}
+        void onWin([[maybe_unused]] std::string const &playerName) override {}
     };
 
     Dies dies;
@@ -278,6 +297,23 @@ private:
         if (players.size() < MIN_PLAYERS) {
             throw TooFewPlayersException();
         }
+    }
+
+    void makeBoard() {
+        this->board = Board({
+            std::make_shared<SeasonBeginning>("Początek sezonu"),
+            std::make_shared<Match>("Mecz z San Marino", Match::friendly, 160),
+            std::make_shared<FreeDay>("Dzień wolny od treningu"),
+            std::make_shared<Match>("Mecz z Lichtensteinem", Match::friendly, 220),
+            std::make_shared<YellowCard>("Żółta kartka", 3),
+            std::make_shared<Match>("Mecz z Meksykiem", Match::forPoints, 300),
+            std::make_shared<Match>("Mecz z Arabią Saudyjską", Match::forPoints, 280),
+            std::make_shared<Bookmaker>("Bukmacher", 100),
+            std::make_shared<Match>("Mecz z Argentyną", Match::forPoints, 250),
+            std::make_shared<Goal>("Gol", 120),
+            std::make_shared<Match>("Mecz z Francją", Match::final, 400),
+            std::make_shared<Penalty>("Karny", 180)
+        });
     }
 
     std::string movePlayer(Player *player, unsigned int fields) {
@@ -313,20 +349,7 @@ private:
 
 public:
     WorldCup2022() {
-        this->board = Board({
-            std::make_shared<SeasonBeginning>("Początek sezonu"),
-            std::make_shared<Match>("Mecz z San Marino", Match::friendly, 160),
-            std::make_shared<FreeDay>("Dzień wolny od treningu"),
-            std::make_shared<Match>("Mecz z Lichtensteinem", Match::friendly, 220),
-            std::make_shared<YellowCard>("Żółta kartka", 3),
-            std::make_shared<Match>("Mecz z Meksykiem", Match::forPoints, 300),
-            std::make_shared<Match>("Mecz z Arabią Saudyjską", Match::forPoints, 280),
-            std::make_shared<Bookmaker>("Bukmacher", 100),
-            std::make_shared<Match>("Mecz z Argentyną", Match::forPoints, 250),
-            std::make_shared<Goal>("Gol", 120),
-            std::make_shared<Match>("Mecz z Francją", Match::final, 400),
-            std::make_shared<Penalty>("Karny", 180)
-        });
+        makeBoard();
     }
 
     void addDie(std::shared_ptr<Die> die) override {
@@ -341,9 +364,17 @@ public:
         this->scoreboard = sb;
     }
 
+    void resetPlayersPosition() {
+        for (Player p : players) {
+            p.putToStart();
+        }
+    }
+
     void play(unsigned int rounds) override {
         checkDies();
         checkPlayers();
+        board.resetBoard();
+        resetPlayersPosition();
         for (unsigned int round = 0; round < rounds && players.size() > 1; round++) {
             scoreboard->onRound(round);
             std::string status;
@@ -353,23 +384,17 @@ public:
                     playerIt->suspension--;
                 } else {
                     status = movePlayer(&(*playerIt), dies.roll());
-                    // do debugowania żeby nie wpisywać za każdym razem jak nie będzie działać
-                    // std::cout << round << playerIt->getName() << " " << board.getField(playerIt->getPosition())->getName() << std::endl;
                 }
                 scoreboard->onTurn(playerIt->getName(), status, 
                         board.getField(playerIt->getPosition())->getName(),
                         playerIt->getMoney());
 
                 if (playerIt->bankrupt()) {
-                    if (players.size() == 1) break; 
+                    if (players.size() == 1) break;
                     players.erase(playerIt++);
                 } else {
                     playerIt++;
                 }
-
-                // czemu to nie działa skoro to chyba to samo co ten if i else powyżej xD
-                // if (playerIt->bankrupt()) players.erase(playerIt);   
-                // playerIt++;             
             }
         }
         scoreboard->onWin(findWinner());
