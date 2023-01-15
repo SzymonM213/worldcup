@@ -9,3 +9,5 @@ TODO:
 
 - "Odejmujemy po jednym punkcie za: 
   9)  brak wyodrębnionej klasy reprezentującej kostki" XD
+
+- co jak w jednej rundzie wszyscy zbankrutują?
