@@ -4,6 +4,7 @@
 #include <cassert>
 #include "worldcup2022.h"
 
+#include <iostream>
 class ExampleDie : public Die {
 public:
     [[nodiscard]] unsigned short roll() const override {
@@ -18,15 +19,18 @@ class TextScoreBoard : public ScoreBoard {
 public:
     void onRound(unsigned int roundNo) override {
         info << "=== Runda: " << roundNo << "\n";
+        std::cout << "=== Runda: " << roundNo << "\n";
     }
 
     void onTurn(std::string const &playerName, std::string const &status,
                 std::string const &currentSquareName, unsigned int money) override {
         info << playerName << " [" << status << "] [" << money << "] - " << currentSquareName << "\n";
+        std::cout << playerName << " [" << status << "] [" << money << "] - " << currentSquareName << "\n";
     }
 
     void onWin(const std::string &playerName) override {
         info << "=== Zwycięzca: " << playerName << "\n";
+        std::cout << "=== Zwycięzca: " << playerName << "\n";
     }
 
     std::string str() {
