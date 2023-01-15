@@ -7,6 +7,7 @@
 #include <vector>
 #include <list>
 #include <iostream>
+#include <cassert>
 
 #include "worldcup.h"
 
@@ -42,14 +43,15 @@ private:
             this->zdzislaws += amount;
         }
 
-        bool substractMoney(unsigned int amount) {
+        unsigned int substractMoney(unsigned int amount) {
             if (this->zdzislaws >= amount) {
                 this->zdzislaws -= amount;
-                return true;
+                return amount;
             } else {
                 this->isBankrupt = true;
+                unsigned int tmp = this->zdzislaws;
                 this->zdzislaws = 0;
-                return false;
+                return tmp;
             }
         }
 
@@ -178,24 +180,22 @@ private:
         }
 
         void onPlayerStop(Player &player) override {
-            player.addMoney(playersPassed * fee * matchRate);
-            playersPassed = 0;
+            player.addMoney(matchBonus * matchRate);
+            matchBonus = 0;
         }
 
         void onPlayerPass(Player &player) override {
-            if (player.substractMoney(fee)) {
-                playersPassed++;
-            }
+            matchBonus += player.substractMoney(fee);
         }
 
         void reset() override {
-            playersPassed = 0;
+            matchBonus = 0;
         }
 
     private:
         const unsigned int fee;
         float matchRate;
-        unsigned int playersPassed = 0;
+        unsigned int matchBonus = 0;
     };
 
     class FreeDay : public Field {
@@ -312,17 +312,19 @@ private:
             std::make_shared<Match>("Mecz z Argentyną", Match::forPoints, 250),
             std::make_shared<Goal>("Gol", 120),
             std::make_shared<Match>("Mecz z Francją", Match::final, 400),
-            std::make_shared<Penalty>("Karny", 180)
+            std::make_shared<Penalty>("Rzut karny", 180)
         });
     }
 
     std::string movePlayer(Player *player, unsigned int fields) {
         unsigned int position = player->getPosition();
-        for (unsigned int i = 1; i < fields; i++) {
+        for (unsigned int i = 1; i < fields && !player->bankrupt(); i++) {
             board.getField((position + i) % board.size())->onPlayerPass(*player);
         }
         player->move(fields, board.size());
-        board.getField(player->getPosition())->onPlayerStop(*player);
+        if(!player->bankrupt()) {
+            board.getField(player->getPosition())->onPlayerStop(*player);
+        }
         if (player->bankrupt()) {
             return "*** bankrut ***";                       
         }
@@ -378,16 +380,16 @@ public:
         for (unsigned int round = 0; round < rounds && players.size() > 1; round++) {
             scoreboard->onRound(round);
             std::string status;
-            for (auto playerIt = players.begin(); playerIt != players.end();) {
+            for (auto playerIt = players.begin(); playerIt != players.end() && players.size() > 1;) {
                 if (playerIt->suspension > 0) {
                     status = "*** czekanie: " + std::to_string(playerIt->suspension) + " ***";
                     playerIt->suspension--;
                 } else {
                     status = movePlayer(&(*playerIt), dies.roll());
                 }
-                scoreboard->onTurn(playerIt->getName(), status, 
-                        board.getField(playerIt->getPosition())->getName(),
-                        playerIt->getMoney());
+
+                scoreboard->onTurn(playerIt->getName(), status, board.getField(playerIt->getPosition())->getName(),
+                                   playerIt->getMoney());
 
                 if (playerIt->bankrupt()) {
                     if (players.size() == 1) break;
@@ -397,7 +399,7 @@ public:
                 }
             }
         }
-        scoreboard->onWin(findWinner());
+        if (!players.empty()) scoreboard->onWin(findWinner());
     };
 };
 
