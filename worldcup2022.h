@@ -156,10 +156,13 @@ private:
             switch (type) {
                 case friendly:
                     matchRate = 1;
+                    break;
                 case forPoints:
                     matchRate = 2.5;
+                    break;
                 case final:
                     matchRate = 4;
+                    break;
             }
         }
 
@@ -311,17 +314,18 @@ public:
                     status = "w grze";
                     bancrupted = playerIt->bankrupt();
                     if (bancrupted) {
-                        std::cout << "AAAAAA" << std::endl;
-                        players.erase(playerIt);
                         status = "*** bankrut ***";
+                        scoreboard->onTurn(playerIt->getName(), status, board.getField(playerIt->getPosition())->getName(),
+                            playerIt->getMoney());
+                        players.erase(playerIt--);
                     }
                 }
-                scoreboard->onTurn(playerIt->getName(), status, board.getField(playerIt->getPosition())->getName(),
-                                   playerIt->getMoney());
-                std::cout << "SS\n";
-                if (bancrupted) {
-                    playerIt--; // to robi coś złego
-                    std::cout << "Y\n";
+                if (playerIt->suspension > 0) {
+                    status = "*** czekanie: " + std::to_string(playerIt->suspension + 1) + " ***";
+                }
+                if (!bancrupted) {
+                    scoreboard->onTurn(playerIt->getName(), status, board.getField(playerIt->getPosition())->getName(),
+                        playerIt->getMoney());
                 }
             }
         }
