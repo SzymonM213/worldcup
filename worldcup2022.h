@@ -215,15 +215,70 @@ private:
         }
     };
 
-    std::vector<std::shared_ptr<Die>> dies;
+    class Dies {
+    private:
+        std::vector<std::shared_ptr<Die>> dies;
+    public:
+        Dies() = default;
+
+        [[maybe_unused]] void addDie(const std::shared_ptr<Die> &die) {
+            dies.push_back(die);
+        }
+
+        unsigned int size() {
+            return dies.size();
+        }
+
+        unsigned int roll() {
+            unsigned int sum = 0;
+            for (auto &&die : dies) {
+                sum += die->roll();
+            }
+            return sum;
+        }
+    };
+
+    class DefaultScoreboard : public ScoreBoard {
+    public:
+        
+        virtual void onRound([[maybe_unused]] unsigned int roundNo) {}
+
+        
+        virtual void onTurn([[maybe_unused]] std::string const &playerName, 
+                            [[maybe_unused]] std::string const &playerStatus,
+                            [[maybe_unused]] std::string const &squareName, 
+                            [[maybe_unused]] unsigned int money) {}
+
+        virtual void onWin([[maybe_unused]] std::string const &playerName) {}
+    };
+
+    Dies dies;
     std::list<Player> players;
-    std::shared_ptr<ScoreBoard> scoreboard;
+    std::shared_ptr<ScoreBoard> scoreboard = std::make_shared<DefaultScoreboard>();
     Board board;
 
     class TooManyDiceException : public std::exception {};
     class TooFewDiceException : public std::exception {};
     class TooManyPlayersException : public std::exception {};
     class TooFewPlayersException : public std::exception {};
+
+    void checkDies() {
+        if (dies.size() > DIES_NUMBER) {
+            throw TooManyDiceException();
+        }
+        if (dies.size() < DIES_NUMBER) {
+            throw TooFewDiceException();
+        }
+    }
+
+    void checkPlayers() {
+        if (players.size() > MAX_PLAYERS) {
+            throw TooManyPlayersException();
+        }
+        if (players.size() < MIN_PLAYERS) {
+            throw TooFewPlayersException();
+        }
+    }
 
 public:
     WorldCup2022() {
@@ -246,7 +301,7 @@ public:
     // Jeżeli argumentem jest pusty wskaźnik, to nie wykonuje żadnej operacji
     // (ale nie ma błędu).
     void addDie(std::shared_ptr<Die> die) override {
-        if (die != nullptr) dies.push_back(die);
+        if (die != nullptr) dies.addDie(die);
     }
 
     // Dodaje nowego gracza o podanej nazwie.
@@ -274,18 +329,9 @@ public:
     // rozpoczęcie gry.
     // Wyjątki powinny dziedziczyć po std::exception.
     void play(unsigned int rounds) override {
-        if (players.size() < MIN_PLAYERS) {
-            throw TooFewPlayersException();
-        }
-        if (players.size() > MAX_PLAYERS) {
-            throw TooManyPlayersException();
-        }
-        if (dies.size() < DIES_NUMBER) {
-            throw TooFewDiceException();
-        }
-        if (dies.size() > DIES_NUMBER) {
-            throw TooManyDiceException();
-        }
+        
+        checkDies();
+        checkPlayers();
 
         std::string winnerName; // pewnie można to zrobić ładniej
 
@@ -303,7 +349,7 @@ public:
                     status = "*** czekanie: " + std::to_string(playerIt->suspension) + " ***";
                     playerIt->suspension--;
                 } else {
-                    unsigned int diesResult = dies[0]->roll() + dies[1]->roll();
+                    unsigned int diesResult = dies.roll();
                     unsigned int position = playerIt->getPosition();
                     for (unsigned int i = 1; i < diesResult; i++) {
                         board.getField((position + i) % board.size())->onPlayerPass(*playerIt);
